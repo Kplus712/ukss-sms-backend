@@ -8,27 +8,28 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ENV
-const PORT = process.env.PORT || 4000;
-const BEEM_API_KEY = process.env.BEEM_API_KEY;
+// ===== ENV VARS =====
+const PORT            = process.env.PORT || 4000;
+const BEEM_API_KEY    = process.env.BEEM_API_KEY;
 const BEEM_SECRET_KEY = process.env.BEEM_SECRET_KEY;
 const BEEM_SOURCE_ADDR = process.env.BEEM_SOURCE_ADDR || "UKSS";
 
 if (!BEEM_API_KEY || !BEEM_SECRET_KEY) {
-  console.log("⚠️ Missing BEEM API credentials");
+  console.warn("⚠️  BEEM_API_KEY or BEEM_SECRET_KEY haijawekwa kwenye env.");
 }
 
-// Health check
+// ===== HEALTH CHECK =====
 app.get("/", (req, res) => {
-  res.json({ ok: true, message: "UKSS BEEM backend running" });
+  res.json({ ok: true, message: "UKSS Beem SMS backend running" });
 });
 
-// Bulk SMS endpoint
+// ===== BULK SMS ENDPOINT =====
+// expects: { messages: [{ phone, message }, ...] }
 app.post("/api/send-sms", async (req, res) => {
   try {
     const messages = req.body.messages || [];
     if (!messages.length) {
-      return res.status(400).json({ ok: false, error: "No messages" });
+      return res.status(400).json({ ok: false, error: "No messages provided" });
     }
 
     const results = [];
@@ -45,13 +46,16 @@ app.post("/api/send-sms", async (req, res) => {
         encoding: 0,
         message: m.message,
         recipients: [
-          { recipient_id: i + 1, dest_addr: dest }
+          {
+            recipient_id: i + 1,
+            dest_addr: dest
+          }
         ]
       };
 
-      const auth = Buffer
-        .from(BEEM_API_KEY + ":" + BEEM_SECRET_KEY)
-        .toString("base64");
+      const auth = Buffer.from(
+        BEEM_API_KEY + ":" + BEEM_SECRET_KEY
+      ).toString("base64");
 
       const resp = await axios.post(
         "https://apisms.beem.africa/v1/send",
@@ -70,19 +74,26 @@ app.post("/api/send-sms", async (req, res) => {
       });
     }
 
-    res.json({ ok: true, count: results.length, results });
+    return res.json({ ok: true, count: results.length, results });
 
   } catch (err) {
-    console.error("Beem Error:", err.response?.data || err.message);
-    res.status(500).json({
+    // Hapa tunajaribu kutoa details halisi kutoka Beem
+    const status = err.response?.status || 500;
+    const details = err.response?.data || err.message;
+
+    console.error("Beem send-sms error status:", status);
+    console.error("Beem send-sms error details:", details);
+
+    return res.status(status).json({
       ok: false,
-      error: "Gateway failed",
-      details: err.response?.data || err.message
+      error: "Failed to send SMS via Beem",
+      status,
+      details
     });
   }
 });
 
-// Start server
+// ===== START SERVER =====
 app.listen(PORT, () => {
-  console.log("🚀 Backend running on port", PORT);
+  console.log("🚀 UKSS Beem SMS backend running on port", PORT);
 });
